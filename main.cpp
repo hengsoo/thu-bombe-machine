@@ -1,13 +1,13 @@
 #include <iostream>
-#include <string>
 #include <chrono>
+
 using namespace std;
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::duration;
-using std::chrono::minutes;
+using std::chrono::seconds;
 
-string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 enum position
 {
@@ -181,7 +181,7 @@ bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, i
 	for (int i = 0; i < loop->length; i++) {
 		L_rotor_offset = L_ind;
 		M_rotor_offset = M_ind;
-		R_rotor_offset = R_ind + loop->index[start_index] - 1;
+		R_rotor_offset = (R_ind + loop->index[start_index] - 1) % 26;
 		vx = rotor_encode(vx);
 		start_index = (start_index + 1) % loop->length;
 	}
@@ -246,17 +246,15 @@ int main() {
 	int core_M_ind;
 	int core_R_ind;
 
-	//				 123456789012
-	// Plain Text:   DASXISTXEINX
-	// Cripher Text: VJAREVEADJEV
+	//				 12345678901234567890123
+	// Plain Text:   WETTERVORHERSAGEBISKAYA
+	// Cripher Text: RWIVTYRESXBFOGKUHQBAISE
+
 
 	int plugboard[26];
-	int previous_plugboard[26];
 
+	Loop loop[6] = { {"AGK", {14,15,20}, 3}, {"AITE", {21,3,5,23}, 4}, {"EWRVT", {2,1,7,4,5}, 5}, {"EBSRW", {11,19,9,1,2}, 5} };
 
-	Loop loop[6] = { {"SAXV", {3,8,12,6}, 4}, {"SAJIEDV", {3,2,10,5,9,1,6}, 7} };
-
-	int menu_length = 2;
 
 	int possible_solution_count = 0;
 
@@ -289,7 +287,7 @@ int main() {
 						plugboard[i] = -1;
 					}
 
-					for (int n = 0; n < 2; n++) {
+					for (int n = 0; n < 4; n++) {
 
 						if (dfs(plugboard, 0, &(loop[n]), core_L_ind, core_M_ind, core_R_ind)) {
 							satisfied_loop_count++;
@@ -297,7 +295,7 @@ int main() {
 
 					}
 
-					if (satisfied_loop_count == 2) {
+					if (satisfied_loop_count == 3) {
 						possible_solution_count++;
 
 						cout << possible_solution_count << endl;
@@ -321,8 +319,8 @@ int main() {
 
 	}
 	auto t2 = high_resolution_clock::now();
-	auto ms_int = duration_cast<minutes>(t2 - t1);
-	std::cout << "Time Elapsed: " << ms_int.count() << " minutes" << endl;
+	auto ms_int = duration_cast<seconds>(t2 - t1);
+	std::cout << "Time Elapsed: " << ms_int.count() << " s" << endl;
 
 	return 0;
 }
