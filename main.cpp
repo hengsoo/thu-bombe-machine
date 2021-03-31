@@ -1,6 +1,11 @@
 #include <iostream>
 #include <string>
+#include <chrono>
 using namespace std;
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::duration;
+using std::chrono::minutes;
 
 string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -136,13 +141,102 @@ char rotor_encode(char text) {
 	return inv_rotor_R_result + 'A';
 }
 
-typedef struct cycle {
-	char input;
-	int R_ind_array[10];
+typedef struct loop {
+	const char* text;
+	int index[10];
 	int length;
-} Cycle;
+} Loop;
 
 int KEY_PERMUTATION = 26 * 26 * 26;
+
+void print_plug_board(int* plugboard) {
+
+	for (int c = 0; c < 26; c++) {
+		cout << char(c + 'A');
+
+		if (plugboard[c] != -1) {
+			cout << char(plugboard[c] + 'A');
+		}
+		else {
+			cout << '?';
+		}
+
+		cout << ' ';
+	}
+	cout << endl;
+}
+
+bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, int M_ind, int R_ind) {
+	char input = loop->text[start_index];
+	char v1 = char(plugboard[input - 'A'] + 'A');
+
+	if (v1 < 'A' || v1 > 'Z') {
+		cout << "v1 error: " << v1 << endl;
+		return false;
+	}
+
+	char vx = v1;
+
+	// Set rotor indicators for case, then encode
+	for (int i = 0; i < loop->length; i++) {
+		L_rotor_offset = L_ind;
+		M_rotor_offset = M_ind;
+		R_rotor_offset = R_ind + loop->index[start_index] - 1;
+		vx = rotor_encode(vx);
+		start_index = (start_index + 1) % loop->length;
+	}
+
+	if (vx == v1) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+
+bool dfs(int* plugboard, int count, Loop* loop, int L_ind, int M_ind, int R_ind) {
+	if (count == loop->length) {
+		return true;
+	}
+
+	// swap first char in loop's text
+	int input = loop->text[count] - 'A';
+
+	// previous plugboard exists
+	// just check if loop is satisfied
+	if (plugboard[input] != -1) {
+		if (is_loop_satisfied(loop, plugboard, count, L_ind, M_ind, R_ind)) {
+			if (dfs(plugboard, count + 1, loop, L_ind, M_ind, R_ind)) {
+				return true;
+			}
+		}
+	}
+	// guess the new plugboard swap
+	else {
+		for (int c = 0; c < 26; c++) {
+
+			// if there is no contradiction
+			if (plugboard[c] == -1) {
+				plugboard[input] = c;
+				plugboard[c] = input;
+
+				if (is_loop_satisfied(loop, plugboard, count, L_ind, M_ind, R_ind)) {
+					if (dfs(plugboard, count + 1, loop, L_ind, M_ind, R_ind)) {
+						return true;
+					}
+				}
+
+				// backtrack
+				plugboard[input] = -1;
+				plugboard[c] = -1;
+			}
+		}
+	}
+	
+
+	return false;
+}
 
 int main() {
 	selected_reflector = UKW_B;
@@ -156,8 +250,17 @@ int main() {
 	// Plain Text:   DASXISTXEINX
 	// Cripher Text: VJAREVEADJEV
 
-	Cycle menu[6] = { {'S', {3,8,12,6}, 5}, {'S', {3,2,10,5,9,1,6}, 8} };
+	int plugboard[26];
+	int previous_plugboard[26];
+
+
+	Loop loop[6] = { {"SAXV", {3,8,12,6}, 4}, {"SAJIEDV", {3,2,10,5,9,1,6}, 7} };
+
 	int menu_length = 2;
+
+	int possible_solution_count = 0;
+
+	auto t1 = high_resolution_clock::now();
 
 	// Permute the rotors' order
 	for (int r_1 = 1; r_1 <= 5; r_1++) {
@@ -176,59 +279,50 @@ int main() {
 				core_M_ind = 0;
 				core_R_ind = 0;
 
-				int count = 0;
+				int key_count = 0;
 
-				while (count < KEY_PERMUTATION) {
+				while (key_count < KEY_PERMUTATION) {
 
-					for (int c = 0; c < 26; c++) {
+					int satisfied_loop_count = 0;
 
-						int menu_valid_count = 0;
-						// Run for two menu case
-						for (int i = 0; i < 2; i++) {
-
-							char input = menu[i].input;
-
-							if (alphabet[c] == input) continue;
-							// Assume v1
-							char v1 = alphabet[c];
-							char vx = v1;
-							// Set rotor indicators for case, then encode
-							for (int x = 0; x < menu[i].length; x++) {
-								L_rotor_offset = core_L_ind;
-								M_rotor_offset = core_M_ind;
-								R_rotor_offset = core_R_ind + menu[i].R_ind_array[x] - 1;
-								vx = rotor_encode(vx);
-							}
-
-							if (vx == v1) {
-								menu_valid_count++;
-							}
-						}
-
-						// If all cycles are satisfied, print out possible settings of Enigma
-						if (menu_valid_count == menu_length) {
-							cout << "Possible Rotors: " << r_1 << ' ' << r_2 << ' ' << r_3 << endl;
-							cout << "Possible Plugboard: " << menu[0].input << " <-> " << alphabet[c] << endl;
-							cout << "Initial Core Setting: " <<
-								char(core_L_ind + 'A') <<
-								char(core_M_ind + 'A') <<
-								char(core_R_ind + 'A')
-								<< endl << endl;
-
-							// Found key in this setting, no more cycles needed
-							break;
-						}
+					for (int i = 0; i < 26; i++) {
+						plugboard[i] = -1;
 					}
-					
+
+					for (int n = 0; n < 2; n++) {
+
+						if (dfs(plugboard, 0, &(loop[n]), core_L_ind, core_M_ind, core_R_ind)) {
+							satisfied_loop_count++;
+						}
+
+					}
+
+					if (satisfied_loop_count == 2) {
+						possible_solution_count++;
+
+						cout << possible_solution_count << endl;
+						cout << "Possible Rotors: " << r_1 << ' ' << r_2 << ' ' << r_3 << endl;
+						cout << "Possible Plugboard: "; print_plug_board(plugboard);
+						cout << "Initial Core Setting: " <<
+							char(core_L_ind + 'A') <<
+							char(core_M_ind + 'A') <<
+							char(core_R_ind + 'A')
+							<< endl << endl;
+
+					}
+
 					// Check if next key is valid
 					step(core_L_ind, core_M_ind, core_R_ind);
-					count++;
+					key_count++;
 					
 				}
 			}
 		}
 
 	}
+	auto t2 = high_resolution_clock::now();
+	auto ms_int = duration_cast<minutes>(t2 - t1);
+	std::cout << "Time Elapsed: " << ms_int.count() << " minutes" << endl;
 
 	return 0;
 }
