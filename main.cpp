@@ -7,6 +7,7 @@ using std::chrono::duration_cast;
 using std::chrono::duration;
 using std::chrono::seconds;
 
+// 0-A, 1-B, ... 25-Z
 char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 enum position
@@ -62,23 +63,26 @@ reflector_type selected_reflector = UKW_B;
 
 // Ring setting is fixed at AAA
 
-// 0-A, 1-B, ... 25-Z
-int L_rotor_offset = 0;
-int M_rotor_offset = 0;
-int R_rotor_offset = 0;
+// Indicator value 0 ~ 25
+int rotor_indicator[4] = {
+	-1, // Dummy
+	0,	// Left
+	0,	// Middle
+	0	// Right
+};
 
-void step(int &L, int &M, int &R) {
+void step(int* rotor_indicator) {
 
-	R = (R + 1) % 26;
+	rotor_indicator[RIGHT] = (rotor_indicator[RIGHT] + 1) % 26;
 
 	// Consider notch turn over
-	if (R == selected_rotor[3]->trigger - 'A') {
+	if (rotor_indicator[RIGHT] == selected_rotor[3]->trigger - 'A') {
 
-		M = (M + 1) % 26;
+		rotor_indicator[MIDDLE] = (rotor_indicator[MIDDLE] + 1) % 26;
 
-		if (M == selected_rotor[2]->trigger - 'A') {
+		if (rotor_indicator[MIDDLE] == selected_rotor[2]->trigger - 'A') {
 
-			L = (L + 1) % 26;
+			rotor_indicator[LEFT] = (rotor_indicator[LEFT] + 1) % 26;
 		}
 	}
 }
@@ -114,21 +118,23 @@ int reflector_encode(int text_code, reflector_type type) {
 
 char rotor_encode(char text) {
 
-	step(L_rotor_offset, M_rotor_offset, R_rotor_offset);
+	step(rotor_indicator);
 
 	int text_code = text - 'A';
 
-	int rotor_R_result = rotor_forward_encode(text_code, RIGHT, R_rotor_offset);
-	int rotor_M_result = rotor_forward_encode(rotor_R_result, MIDDLE, M_rotor_offset);
-	int rotor_L_result = rotor_forward_encode(rotor_M_result, LEFT, L_rotor_offset);
+	int rotor_R_result = rotor_forward_encode(text_code, RIGHT, rotor_indicator[RIGHT]);
+	int rotor_M_result = rotor_forward_encode(rotor_R_result, MIDDLE, rotor_indicator[MIDDLE]);
+	int rotor_L_result = rotor_forward_encode(rotor_M_result, LEFT, rotor_indicator[LEFT]);
 	
 	int reflector_result = reflector_encode(rotor_L_result, selected_reflector);
 
-	int inv_rotor_L_result = rotor_inverse_encode(reflector_result, LEFT, L_rotor_offset);
-	int inv_rotor_M_result = rotor_inverse_encode(inv_rotor_L_result, MIDDLE, M_rotor_offset);
-	int inv_rotor_R_result = rotor_inverse_encode(inv_rotor_M_result, RIGHT, R_rotor_offset);
+	int inv_rotor_L_result = rotor_inverse_encode(reflector_result, LEFT, rotor_indicator[LEFT]);
+	int inv_rotor_M_result = rotor_inverse_encode(inv_rotor_L_result, MIDDLE, rotor_indicator[MIDDLE]);
+	int inv_rotor_R_result = rotor_inverse_encode(inv_rotor_M_result, RIGHT, rotor_indicator[RIGHT]);
 
-	//cout << "Rotor Position: " << char(L_rotor_offset + 'A') << char(M_rotor_offset + 'A') << char(R_rotor_offset + 'A') << endl;
+	// Print each step
+	//cout << "Rotor Position: " << char(rotor_indicator[LEFT] + 'A') 
+	//	<< char(rotor_indicator[MIDDLE] + 'A') << char(rotor_indicator[RIGHT] + 'A') << endl;
 	//cout << "Rotor R Encrytion: " << char(rotor_R_result + 'A') << endl;
 	//cout << "Rotor M Encrytion: " << char(rotor_M_result + 'A') << endl;
 	//cout << "Rotor L Encrytion: " << char(rotor_L_result + 'A') << endl;
@@ -147,7 +153,7 @@ typedef struct loop {
 	int length;
 } Loop;
 
-int KEY_PERMUTATION = 26 * 26 * 26;
+const int KEY_PERMUTATION_COUNT = 26 * 26 * 26;
 
 void print_plug_board(int* plugboard) {
 
@@ -166,7 +172,13 @@ void print_plug_board(int* plugboard) {
 	cout << endl;
 }
 
-bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, int M_ind, int R_ind) {
+void reset_plugboard(int* plugboard) {
+	for (int i = 0; i < 26; i++) {
+		plugboard[i] = -1;
+	}
+}
+
+bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int* core_rotor_indicator) {
 	char input = loop->text[start_index];
 	char v1;
 
@@ -185,15 +197,15 @@ bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, i
 
 	char vx = v1;
 
-	// Set rotor indicators for case, then encode
+	// Set rotor indicators for the case, then encode
 	for (int i = 0; i < loop->length; i++) {
-		L_rotor_offset = L_ind;
-		M_rotor_offset = M_ind;
-		R_rotor_offset = R_ind;
+		rotor_indicator[LEFT] = core_rotor_indicator[LEFT];
+		rotor_indicator[MIDDLE] = core_rotor_indicator[MIDDLE];
+		rotor_indicator[RIGHT] = core_rotor_indicator[RIGHT];
 
 		// Set to the right indicator
 		for (int i = 0; i < loop->index[start_index]; i++) {
-			step(L_rotor_offset, M_rotor_offset, R_rotor_offset);
+			step(rotor_indicator);
 		}
 
 		vx = rotor_encode(vx);
@@ -208,73 +220,76 @@ bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, i
 	}
 }
 
-
-bool dfs_check_loop(int* plugboard, int plugboard_count, int loop_index, Loop* loop, int L_ind, int M_ind, int R_ind) {
+bool dfs_check_loop(int* plugboard, int plugboard_count, int loop_index, Loop* loop, int* core_rotor_indicator) {
 	if (loop_index == loop->length) {
 		return true;
 	}
 
-	// swap first char in loop's text
+	// First char in loop
 	int input = loop->text[loop_index] - 'A';
 
-	// previous plugboard exists or plugboard is full
-	// just check if loop is satisfied
+	// If previous plugboard setting exists or plugboard is full
+	// Just check if loop is satisfied
 	if (plugboard[input] != -1 || plugboard_count == 10) {
-		if (is_loop_satisfied(loop, plugboard, loop_index, L_ind, M_ind, R_ind)) {
-			if (dfs_check_loop(plugboard, plugboard_count, loop_index + 1, loop, L_ind, M_ind, R_ind)) {
+		if (is_loop_satisfied(loop, plugboard, loop_index, core_rotor_indicator)) {
+			if (dfs_check_loop(plugboard, plugboard_count, loop_index + 1, loop, core_rotor_indicator)) {
 				return true;
 			}
 		}
 	}
-	// guess the new plugboard swap
+	// Else guess the new plugboard setting
 	else {
 		for (int c = 0; c < 26; c++) {
-
-			// if there is no contradiction
+			// If there is no contradiction
 			if (plugboard[c] == -1) {
 				plugboard[input] = c;
 				plugboard[c] = input;
 
-				if (is_loop_satisfied(loop, plugboard, loop_index, L_ind, M_ind, R_ind)) {
-					if (dfs_check_loop(plugboard, plugboard_count + 1,loop_index + 1, loop, L_ind, M_ind, R_ind)) {
+				if (is_loop_satisfied(loop, plugboard, loop_index, core_rotor_indicator)) {
+					if (dfs_check_loop(plugboard, plugboard_count + 1,loop_index + 1, loop, core_rotor_indicator)) {
 						return true;
 					}
 				}
 
-				// backtrack
+				// Loop not satisfied
+				// Backtrack
 				plugboard[input] = -1;
 				plugboard[c] = -1;
 			}
 		}
 	}
-	
 
 	return false;
 }
 
 int main() {
-	selected_reflector = UKW_B;
-
+	
 	// Core initial indicator (Key)
-	int core_L_ind;
-	int core_M_ind;
-	int core_R_ind;
+	int core_rotor_indicator[4] = {
+		-1, // Dummy
+		0,	// Left
+		0,	// Middle
+		0	// Right
+	};
+
+	selected_reflector = UKW_B;
 
 	//				 12345678901234567890123
 	// Plain Text:   WETTERVORHERSAGEBISKAYA
 	// Cripher Text: RWIVTYRESXBFOGKUHQBAISE
 
-
+	// -1 = no swap
 	int plugboard[26];
 
-	Loop loop[6] = { {"AGK", {14,15,20}, 3}, {"AITE", {21,3,5,23}, 4}, {"EWRVT", {2,1,7,4,5}, 5}, {"EBSRW", {11,19,9,1,2}, 5} };
-
+	Loop loop[4] = { {"AGK", {14,15,20}, 3}, {"AITE", {21,3,5,23}, 4}, {"EWRVT", {2,1,7,4,5}, 5}, {"EBSRW", {11,19,9,1,2}, 5} };
+	int loop_count = 4;
 
 	int possible_solution_count = 0;
 
-	auto t1 = high_resolution_clock::now();
+	auto start_time = high_resolution_clock::now();
 
-	// Permute the rotors' order
+	// Start the bombe machine
+	// Permute rotors' order
 	for (int r_1 = 1; r_1 <= 5; r_1++) {
 		for (int r_2 = 1; r_2 <= 5; r_2++) {
 			if (r_1 == r_2) continue;
@@ -287,28 +302,29 @@ int main() {
 
 				// Assume Ring Settings is AAA
 				// Start from AAA key
-				core_L_ind = 0;
-				core_M_ind = 0;
-				core_R_ind = 0;
+				core_rotor_indicator[LEFT] = 0;
+				core_rotor_indicator[MIDDLE] = 0;
+				core_rotor_indicator[RIGHT] = 0;
 
 				int key_count = 0;
 
-				while (key_count < KEY_PERMUTATION) {
+				// Iterate through keys
+				while (key_count < KEY_PERMUTATION_COUNT) {
 
 					int satisfied_loop_count = 0;
 
-					for (int i = 0; i < 26; i++) {
-						plugboard[i] = -1;
-					}
+					reset_plugboard(plugboard);
 
-					for (int n = 0; n < 4; n++) {
+					for (int n = 0; n < loop_count; n++) {
 
-						if (dfs_check_loop(plugboard, 0, 0, &(loop[n]), core_L_ind, core_M_ind, core_R_ind)) {
+						if (dfs_check_loop(plugboard, 0, 0, &(loop[n]), core_rotor_indicator)) {
 							satisfied_loop_count++;
 						}
 
 					}
 
+					// Print settings if count = 3
+					// Fixed to 3 here, cuz if 4 no solution can be found
 					if (satisfied_loop_count == 3) {
 						possible_solution_count++;
 
@@ -316,15 +332,14 @@ int main() {
 						cout << "Possible Rotors: " << r_1 << ' ' << r_2 << ' ' << r_3 << endl;
 						cout << "Possible Plugboard: "; print_plug_board(plugboard);
 						cout << "Initial Core Setting: " <<
-							char(core_L_ind + 'A') <<
-							char(core_M_ind + 'A') <<
-							char(core_R_ind + 'A')
+							char(core_rotor_indicator[LEFT] + 'A') <<
+							char(core_rotor_indicator[MIDDLE] + 'A') <<
+							char(core_rotor_indicator[RIGHT] + 'A')
 							<< endl << endl;
-
 					}
 
 					// Check if next key is valid
-					step(core_L_ind, core_M_ind, core_R_ind);
+					step(core_rotor_indicator);
 					key_count++;
 					
 				}
@@ -332,9 +347,11 @@ int main() {
 		}
 
 	}
-	auto t2 = high_resolution_clock::now();
-	auto ms_int = duration_cast<seconds>(t2 - t1);
-	std::cout << "Time Elapsed: " << ms_int.count() << " s" << endl;
+
+	auto end_time = high_resolution_clock::now();
+
+	auto s_int = duration_cast<seconds>(end_time - start_time);
+	std::cout << "Time Elapsed: " << s_int.count() << "s" << endl;
 
 	return 0;
 }
