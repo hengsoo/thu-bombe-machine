@@ -1,3 +1,6 @@
+// Bombe Machine
+// 2018080124 SOO JING HENG
+
 #include <iostream>
 #include <chrono>
 
