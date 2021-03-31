@@ -168,7 +168,15 @@ void print_plug_board(int* plugboard) {
 
 bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, int M_ind, int R_ind) {
 	char input = loop->text[start_index];
-	char v1 = char(plugboard[input - 'A'] + 'A');
+	char v1;
+
+	if (plugboard[input - 'A'] == -1) {
+		v1 = input;
+	}
+	else {
+		v1 = char(plugboard[input - 'A'] + 'A');
+	}
+	
 
 	if (v1 < 'A' || v1 > 'Z') {
 		cout << "v1 error: " << v1 << endl;
@@ -181,7 +189,13 @@ bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, i
 	for (int i = 0; i < loop->length; i++) {
 		L_rotor_offset = L_ind;
 		M_rotor_offset = M_ind;
-		R_rotor_offset = (R_ind + loop->index[start_index] - 1) % 26;
+		R_rotor_offset = R_ind;
+
+		// Set to the right indicator
+		for (int i = 0; i < loop->index[start_index]; i++) {
+			step(L_rotor_offset, M_rotor_offset, R_rotor_offset);
+		}
+
 		vx = rotor_encode(vx);
 		start_index = (start_index + 1) % loop->length;
 	}
@@ -195,19 +209,19 @@ bool is_loop_satisfied(Loop* loop, int* plugboard, int start_index, int L_ind, i
 }
 
 
-bool dfs(int* plugboard, int count, Loop* loop, int L_ind, int M_ind, int R_ind) {
-	if (count == loop->length) {
+bool dfs_check_loop(int* plugboard, int plugboard_count, int loop_index, Loop* loop, int L_ind, int M_ind, int R_ind) {
+	if (loop_index == loop->length) {
 		return true;
 	}
 
 	// swap first char in loop's text
-	int input = loop->text[count] - 'A';
+	int input = loop->text[loop_index] - 'A';
 
-	// previous plugboard exists
+	// previous plugboard exists or plugboard is full
 	// just check if loop is satisfied
-	if (plugboard[input] != -1) {
-		if (is_loop_satisfied(loop, plugboard, count, L_ind, M_ind, R_ind)) {
-			if (dfs(plugboard, count + 1, loop, L_ind, M_ind, R_ind)) {
+	if (plugboard[input] != -1 || plugboard_count == 10) {
+		if (is_loop_satisfied(loop, plugboard, loop_index, L_ind, M_ind, R_ind)) {
+			if (dfs_check_loop(plugboard, plugboard_count, loop_index + 1, loop, L_ind, M_ind, R_ind)) {
 				return true;
 			}
 		}
@@ -221,8 +235,8 @@ bool dfs(int* plugboard, int count, Loop* loop, int L_ind, int M_ind, int R_ind)
 				plugboard[input] = c;
 				plugboard[c] = input;
 
-				if (is_loop_satisfied(loop, plugboard, count, L_ind, M_ind, R_ind)) {
-					if (dfs(plugboard, count + 1, loop, L_ind, M_ind, R_ind)) {
+				if (is_loop_satisfied(loop, plugboard, loop_index, L_ind, M_ind, R_ind)) {
+					if (dfs_check_loop(plugboard, plugboard_count + 1,loop_index + 1, loop, L_ind, M_ind, R_ind)) {
 						return true;
 					}
 				}
@@ -289,7 +303,7 @@ int main() {
 
 					for (int n = 0; n < 4; n++) {
 
-						if (dfs(plugboard, 0, &(loop[n]), core_L_ind, core_M_ind, core_R_ind)) {
+						if (dfs_check_loop(plugboard, 0, 0, &(loop[n]), core_L_ind, core_M_ind, core_R_ind)) {
 							satisfied_loop_count++;
 						}
 
